@@ -1,3 +1,5 @@
+import TOKEN_TYPES_ENUM from './token-types'
+
 const SINGLE_QUOTE = '\''.charCodeAt(0)
 const DOUBLE_QUOTE = '"'.charCodeAt(0)
 const BACKSLASH = '\\'.charCodeAt(0)
@@ -18,24 +20,7 @@ const ASTERISK = '*'.charCodeAt(0)
 const COLON = ':'.charCodeAt(0)
 const AT = '@'.charCodeAt(0)
 
-const TOKEN_LENGTH = 7
 const EMPTY = 0
-const TOKEN_CODES = {
-  'space': 0,
-  'word': 1,
-  'string': 2,
-  'comment': 3,
-  'brackets': 4,
-  'at-word': 5,
-  '(': 6,
-  ')': 7,
-  '[': 8,
-  ']': 9,
-  '{': 10,
-  '}': 11,
-  ':': 12,
-  ';': 13
-}
 
 const RE_AT_END = /[ \n\t\r\f{()'"\\;/[\]#]/g
 const RE_WORD_END = /[ \n\t\r\f(){}:;@!'"\\\][#]|\/(?=\*)/g
@@ -47,7 +32,7 @@ export default function tokenizer (input, options = {}) {
   const ignore = options.ignoreErrors
 
   let code, next, quote, lines, last, content, escape
-  let nextLine, nextOffset, escaped, escapePos, prev, n
+  let nextLine, nextOffset, escaped, escapePos, prev, n, currentToken
 
   const length = css.length
   let offset = -1
@@ -55,16 +40,9 @@ export default function tokenizer (input, options = {}) {
   let pos = 0
   const contentBuffer = []
   const returned = []
-  const currentToken = new Uint32Array(TOKEN_LENGTH)
 
   function unclosed (what) {
     throw input.error('Unclosed ' + what, line, pos - offset)
-  }
-
-  function setCurrentToken (args) {
-    for (let i = 0; i < TOKEN_LENGTH; i++) {
-      currentToken[i] = args[i]
-    }
   }
 
   function endOfFile () {
@@ -106,7 +84,7 @@ export default function tokenizer (input, options = {}) {
           code === FEED
         )
 
-        setCurrentToken([TOKEN_CODES.space,
+        currentToken = new Uint32Array([TOKEN_TYPES_ENUM.space,
           pos, next,
           EMPTY, EMPTY,
           EMPTY, EMPTY
@@ -115,7 +93,7 @@ export default function tokenizer (input, options = {}) {
         break
 
       case OPEN_SQUARE:
-        setCurrentToken([TOKEN_CODES['['],
+        currentToken = new Uint32Array([TOKEN_TYPES_ENUM['['],
           pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
@@ -123,7 +101,7 @@ export default function tokenizer (input, options = {}) {
         break
 
       case CLOSE_SQUARE:
-        setCurrentToken([TOKEN_CODES[']'],
+        currentToken = new Uint32Array([TOKEN_TYPES_ENUM[']'],
           pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
@@ -131,7 +109,7 @@ export default function tokenizer (input, options = {}) {
         break
 
       case OPEN_CURLY:
-        setCurrentToken([TOKEN_CODES['{'],
+        currentToken = new Uint32Array([TOKEN_TYPES_ENUM['{'],
           pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
@@ -139,7 +117,7 @@ export default function tokenizer (input, options = {}) {
         break
 
       case CLOSE_CURLY:
-        setCurrentToken([TOKEN_CODES['}'],
+        currentToken = new Uint32Array([TOKEN_TYPES_ENUM['}'],
           pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
@@ -147,7 +125,7 @@ export default function tokenizer (input, options = {}) {
         break
 
       case COLON:
-        setCurrentToken([TOKEN_CODES[':'],
+        currentToken = new Uint32Array([TOKEN_TYPES_ENUM[':'],
           pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
@@ -155,7 +133,7 @@ export default function tokenizer (input, options = {}) {
         break
 
       case SEMICOLON:
-        setCurrentToken([TOKEN_CODES[';'],
+        currentToken = new Uint32Array([TOKEN_TYPES_ENUM[';'],
           pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
@@ -189,7 +167,7 @@ export default function tokenizer (input, options = {}) {
               escaped = !escaped
             }
           } while (escaped)
-          setCurrentToken([TOKEN_CODES.brackets,
+          currentToken = new Uint32Array([TOKEN_TYPES_ENUM.brackets,
             pos, next + 1,
             line, pos - offset,
             line, next - offset
@@ -201,13 +179,13 @@ export default function tokenizer (input, options = {}) {
           content = css.slice(pos, next + 1)
 
           if (next === -1 || RE_BAD_BRACKET.test(content)) {
-            setCurrentToken([TOKEN_CODES['('],
+            currentToken = new Uint32Array([TOKEN_TYPES_ENUM['('],
               pos, pos + 1,
               line, pos - offset,
               EMPTY, EMPTY
             ])
           } else {
-            setCurrentToken([TOKEN_CODES.brackets,
+            currentToken = new Uint32Array([TOKEN_TYPES_ENUM.brackets,
               pos, next + 1,
               line, pos - offset,
               line, next - offset
@@ -219,7 +197,7 @@ export default function tokenizer (input, options = {}) {
         break
 
       case CLOSE_PARENTHESES:
-        setCurrentToken([TOKEN_CODES[')'],
+        currentToken = new Uint32Array([TOKEN_TYPES_ENUM[')'],
           pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
@@ -260,7 +238,7 @@ export default function tokenizer (input, options = {}) {
           nextOffset = offset
         }
 
-        setCurrentToken([TOKEN_CODES.string,
+        currentToken = new Uint32Array([TOKEN_TYPES_ENUM.string,
           pos, ignore ? next : next + 1,
           line, pos - offset,
           nextLine, next - nextOffset
@@ -280,7 +258,7 @@ export default function tokenizer (input, options = {}) {
           next = RE_AT_END.lastIndex - 2
         }
 
-        setCurrentToken([TOKEN_CODES['at-word'],
+        currentToken = new Uint32Array([TOKEN_TYPES_ENUM['at-word'],
           pos, next + 1,
           line, pos - offset,
           line, next - offset
@@ -317,7 +295,7 @@ export default function tokenizer (input, options = {}) {
           }
         }
 
-        setCurrentToken([TOKEN_CODES.word,
+        currentToken = new Uint32Array([TOKEN_TYPES_ENUM.word,
           pos, next + 1,
           line, pos - offset,
           line, next - offset
@@ -349,7 +327,7 @@ export default function tokenizer (input, options = {}) {
             nextOffset = offset
           }
 
-          setCurrentToken([TOKEN_CODES.comment,
+          currentToken = new Uint32Array([TOKEN_TYPES_ENUM.comment,
             pos, ignore ? next : next + 1,
             line, pos - offset,
             nextLine, next - nextOffset
@@ -367,7 +345,7 @@ export default function tokenizer (input, options = {}) {
             next = RE_WORD_END.lastIndex - 2
           }
 
-          setCurrentToken([TOKEN_CODES.word,
+          currentToken = new Uint32Array([TOKEN_TYPES_ENUM.word,
             pos, next + 1,
             line, pos - offset,
             line, next - offset

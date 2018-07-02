@@ -4,6 +4,7 @@ import Comment from './comment'
 import AtRule from './at-rule'
 import Root from './root'
 import Rule from './rule'
+import TOKEN_TYPES_ENUM from './token-types'
 
 export default class Parser {
   constructor (input) {
@@ -22,50 +23,51 @@ export default class Parser {
     this.tokenizer = tokenizer(this.input)
   }
 
+  getTokenContent (token) {
+    return this.input.css.slice(token[1], token[2])
+  }
+
+  getTokenContentFromArray (tokenArray, index) {
+    return this.input.css.slice(tokenArray[index][1], tokenArray[index][2])
+  }
+
   parse () {
     let token
     while (!this.tokenizer.endOfFile()) {
-      token = this.tokenizer.nextToken()
-
+      token = this.tokenizer.nextToken().slice(0)
       switch (token[0]) {
-        case 'space':
-          this.spaces += token[1]
+        case TOKEN_TYPES_ENUM.space:
+          this.spaces += this.getTokenContent(token)
           break
-
-        case ';':
-          this.freeSemicolon(token)
+        case TOKEN_TYPES_ENUM[';']:
+          this.freeSemicolon()
           break
-
-        case '}':
+        case TOKEN_TYPES_ENUM['}']:
           this.end(token)
           break
-
-        case 'comment':
-          this.comment(token)
+        case TOKEN_TYPES_ENUM.comment:
+          this.comment(token, this.getTokenContent(token))
           break
-
-        case 'at-word':
-          this.atrule(token)
+        case TOKEN_TYPES_ENUM['at-word']:
+          this.atrule(token, this.getTokenContent(token))
           break
-
-        case '{':
+        case TOKEN_TYPES_ENUM['{']:
           this.emptyRule(token)
           break
-
         default:
-          this.other(token)
+          this.other(token, this.getTokenContent(token))
           break
       }
     }
     this.endFile()
   }
 
-  comment (token) {
+  comment (token, content) {
     const node = new Comment()
-    this.init(node, token[2], token[3])
-    node.source.end = { line: token[4], column: token[5] }
+    this.init(node, token[3], token[4])
+    node.source.end = { line: token[5], column: token[6] }
 
-    const text = token[1].slice(2, -2)
+    const text = content.slice(2, -2)
     if (/^\s*$/.test(text)) {
       node.text = ''
       node.raws.left = text
@@ -80,7 +82,7 @@ export default class Parser {
 
   emptyRule (token) {
     const node = new Rule()
-    this.init(node, token[2], token[3])
+    this.init(node, token[3], token[4])
     node.selector = ''
     node.raws.between = ''
     this.current = node
@@ -99,25 +101,28 @@ export default class Parser {
       type = token[0]
       tokens.push(token)
 
-      if (type === '(' || type === '[') {
+      if (type === TOKEN_TYPES_ENUM['('] || type === TOKEN_TYPES_ENUM['[']) {
         if (!bracket) bracket = token
-        brackets.push(type === '(' ? ')' : ']')
+        const openP = TOKEN_TYPES_ENUM['(']
+        const closeP = TOKEN_TYPES_ENUM[')']
+        const closeS = TOKEN_TYPES_ENUM[']']
+        brackets.push(type === openP ? closeP : closeS)
       } else if (brackets.length === 0) {
-        if (type === ';') {
+        if (type === TOKEN_TYPES_ENUM[';']) {
           if (colon) {
             this.decl(tokens)
             return
           } else {
             break
           }
-        } else if (type === '{') {
+        } else if (type === TOKEN_TYPES_ENUM['{']) {
           this.rule(tokens)
           return
-        } else if (type === '}') {
+        } else if (type === TOKEN_TYPES_ENUM['}']) {
           this.tokenizer.back(tokens.pop())
           end = true
           break
-        } else if (type === ':') {
+        } else if (type === TOKEN_TYPES_ENUM[':']) {
           colon = true
         }
       } else if (type === brackets[brackets.length - 1]) {
@@ -134,7 +139,8 @@ export default class Parser {
     if (end && colon) {
       while (tokens.length) {
         token = tokens[tokens.length - 1][0]
-        if (token !== 'space' && token !== 'comment') break
+        if (token !== TOKEN_TYPES_ENUM.space &&
+          token !== TOKEN_TYPES_ENUM.comment) break
         this.tokenizer.back(tokens.pop())
       }
       this.decl(tokens)
@@ -147,7 +153,7 @@ export default class Parser {
     tokens.pop()
 
     const node = new Rule()
-    this.init(node, tokens[0][2], tokens[0][3])
+    this.init(node, tokens[0][3], tokens[0][4])
 
     node.raws.between = this.spacesAndCommentsFromEnd(tokens)
     this.raw(node, 'selector', tokens)
@@ -159,42 +165,46 @@ export default class Parser {
     this.init(node)
 
     const last = tokens[tokens.length - 1]
-    if (last[0] === ';') {
+    if (last[0] === TOKEN_TYPES_ENUM[';']) {
       this.semicolon = true
       tokens.pop()
     }
-    if (last[4]) {
-      node.source.end = { line: last[4], column: last[5] }
+    if (last[5]) {
+      node.source.end = { line: last[5], column: last[6] }
     } else {
-      node.source.end = { line: last[2], column: last[3] }
+      node.source.end = { line: last[3], column: last[4] }
     }
 
-    while (tokens[0][0] !== 'word') {
+    while (tokens[0][0] !== TOKEN_TYPES_ENUM.word) {
       if (tokens.length === 1) this.unknownWord(tokens)
-      node.raws.before += tokens.shift()[1]
+      node.raws.before += this.getTokenContentFromArray(tokens, 0)
+      tokens.shift()
     }
-    node.source.start = { line: tokens[0][2], column: tokens[0][3] }
+    node.source.start = { line: tokens[0][3], column: tokens[0][4] }
 
     node.prop = ''
     while (tokens.length) {
       const type = tokens[0][0]
-      if (type === ':' || type === 'space' || type === 'comment') {
+      if (type === TOKEN_TYPES_ENUM[':'] ||
+        type === TOKEN_TYPES_ENUM.space ||
+        type === TOKEN_TYPES_ENUM.comment) {
         break
       }
-      node.prop += tokens.shift()[1]
+      node.prop += this.getTokenContentFromArray(tokens, 0)
+      tokens.shift()
     }
 
     node.raws.between = ''
 
-    let token
+    let token, content
     while (tokens.length) {
       token = tokens.shift()
-
-      if (token[0] === ':') {
-        node.raws.between += token[1]
+      content = this.getTokenContent(token)
+      if (token[0] === TOKEN_TYPES_ENUM[':']) {
+        node.raws.between += content
         break
       } else {
-        node.raws.between += token[1]
+        node.raws.between += content
       }
     }
 
@@ -207,21 +217,23 @@ export default class Parser {
 
     for (let i = tokens.length - 1; i > 0; i--) {
       token = tokens[i]
-      if (token[1].toLowerCase() === '!important') {
+      if (this.getTokenContent(token).toLowerCase() === '!important') {
         node.important = true
         let string = this.stringFrom(tokens, i)
         string = this.spacesFromEnd(tokens) + string
         if (string !== ' !important') node.raws.important = string
         break
-      } else if (token[1].toLowerCase() === 'important') {
+      } else if (this.getTokenContent(token).toLowerCase() === 'important') {
         const cache = tokens.slice(0)
         let str = ''
         for (let j = i; j > 0; j--) {
           const type = cache[j][0]
-          if (str.trim().indexOf('!') === 0 && type !== 'space') {
+          if (str.trim().indexOf('!') === 0 &&
+            type !== TOKEN_TYPES_ENUM.space) {
             break
           }
-          str = cache.pop()[1] + str
+          str = this.getTokenContentFromArray(cache, cache.length - 1) + str
+          cache.pop()
         }
         if (str.trim().indexOf('!') === 0) {
           node.important = true
@@ -230,7 +242,8 @@ export default class Parser {
         }
       }
 
-      if (token[0] !== 'space' && token[0] !== 'comment') {
+      if (token[0] !== TOKEN_TYPES_ENUM.space &&
+        token[0] !== TOKEN_TYPES_ENUM.comment) {
         break
       }
     }
@@ -240,13 +253,13 @@ export default class Parser {
     if (node.value.indexOf(':') !== -1) this.checkMissedSemicolon(tokens)
   }
 
-  atrule (token) {
+  atrule (token, content) {
     const node = new AtRule()
-    node.name = token[1].slice(1)
+    node.name = content.slice(1)
     if (node.name === '') {
       this.unnamedAtrule(node, token)
     }
-    this.init(node, token[2], token[3])
+    this.init(node, token[3], token[4])
 
     let prev
     let shift
@@ -257,22 +270,22 @@ export default class Parser {
     while (!this.tokenizer.endOfFile()) {
       token = this.tokenizer.nextToken()
 
-      if (token[0] === ';') {
-        node.source.end = { line: token[2], column: token[3] }
+      if (token[0] === TOKEN_TYPES_ENUM[';']) {
+        node.source.end = { line: token[3], column: token[4] }
         this.semicolon = true
         break
-      } else if (token[0] === '{') {
+      } else if (token[0] === TOKEN_TYPES_ENUM['{']) {
         open = true
         break
-      } else if (token[0] === '}') {
+      } else if (token[0] === TOKEN_TYPES_ENUM['}']) {
         if (params.length > 0) {
           shift = params.length - 1
           prev = params[shift]
-          while (prev && prev[0] === 'space') {
+          while (prev && prev[0] === TOKEN_TYPES_ENUM.space) {
             prev = params[--shift]
           }
           if (prev) {
-            node.source.end = { line: prev[4], column: prev[5] }
+            node.source.end = { line: prev[5], column: prev[6] }
           }
         }
         this.end(token)
@@ -293,7 +306,7 @@ export default class Parser {
       this.raw(node, 'params', params)
       if (last) {
         token = params[params.length - 1]
-        node.source.end = { line: token[4], column: token[5] }
+        node.source.end = { line: token[5], column: token[6] }
         this.spaces = node.raws.between
         node.raws.between = ''
       }
@@ -318,7 +331,7 @@ export default class Parser {
     this.spaces = ''
 
     if (this.current.parent) {
-      this.current.source.end = { line: token[2], column: token[3] }
+      this.current.source.end = { line: token[3], column: token[4] }
       this.current = this.current.parent
     } else {
       this.unexpectedClose(token)
@@ -333,8 +346,8 @@ export default class Parser {
     this.current.raws.after = (this.current.raws.after || '') + this.spaces
   }
 
-  freeSemicolon (token) {
-    this.spaces += token[1]
+  freeSemicolon () {
+    this.spaces += ';'
     if (this.current.nodes) {
       const prev = this.current.nodes[this.current.nodes.length - 1]
       if (prev && prev.type === 'rule' && !prev.raws.ownSemicolon) {
@@ -367,17 +380,17 @@ export default class Parser {
       token = tokens[i]
       type = token[0]
 
-      if (type === 'comment' && node.type === 'rule') {
+      if (type === TOKEN_TYPES_ENUM.comment && node.type === 'rule') {
         prev = tokens[i - 1]
         next = tokens[i + 1]
 
         if (
-          prev[0] !== 'space' &&
-          next[0] !== 'space' &&
-          pattern.test(prev[1]) &&
-          pattern.test(next[1])
+          prev[0] !== TOKEN_TYPES_ENUM.space &&
+          next[0] !== TOKEN_TYPES_ENUM.space &&
+          pattern.test(this.getTokenContent(prev)) &&
+          pattern.test(this.getTokenContent(next))
         ) {
-          value += token[1]
+          value += this.getTokenContent(token)
         } else {
           clean = false
         }
@@ -385,14 +398,15 @@ export default class Parser {
         continue
       }
 
-      if (type === 'comment' || (type === 'space' && i === length - 1)) {
+      if (type === TOKEN_TYPES_ENUM.comment ||
+        (type === TOKEN_TYPES_ENUM.space && i === length - 1)) {
         clean = false
       } else {
-        value += token[1]
+        value += this.getTokenContent(token)
       }
     }
     if (!clean) {
-      const raw = tokens.reduce((all, i) => all + i[1], '')
+      const raw = tokens.reduce((all, i) => all + this.getTokenContent(i), '')
       node.raws[prop] = { value, raw }
     }
     node[prop] = value
@@ -403,8 +417,10 @@ export default class Parser {
     let spaces = ''
     while (tokens.length) {
       lastTokenType = tokens[tokens.length - 1][0]
-      if (lastTokenType !== 'space' && lastTokenType !== 'comment') break
-      spaces = tokens.pop()[1] + spaces
+      if (lastTokenType !== TOKEN_TYPES_ENUM.space &&
+        lastTokenType !== TOKEN_TYPES_ENUM.comment) break
+      spaces = this.getTokenContentFromArray(tokens, tokens.length - 1) + spaces
+      tokens.pop()
     }
     return spaces
   }
@@ -414,8 +430,10 @@ export default class Parser {
     let spaces = ''
     while (tokens.length) {
       next = tokens[0][0]
-      if (next !== 'space' && next !== 'comment') break
-      spaces += tokens.shift()[1]
+      if (next !== TOKEN_TYPES_ENUM.space &&
+        next !== TOKEN_TYPES_ENUM.comment) break
+      spaces += this.getTokenContentFromArray(tokens, 0)
+      tokens.shift()
     }
     return spaces
   }
@@ -425,8 +443,9 @@ export default class Parser {
     let spaces = ''
     while (tokens.length) {
       lastTokenType = tokens[tokens.length - 1][0]
-      if (lastTokenType !== 'space') break
-      spaces = tokens.pop()[1] + spaces
+      if (lastTokenType !== TOKEN_TYPES_ENUM.space) break
+      spaces = this.getTokenContentFromArray(tokens, tokens.length - 1)
+      tokens.pop()
     }
     return spaces
   }
@@ -434,7 +453,7 @@ export default class Parser {
   stringFrom (tokens, from) {
     let result = ''
     for (let i = from; i < tokens.length; i++) {
-      result += tokens[i][1]
+      result += this.getTokenContentFromArray(tokens, i)
     }
     tokens.splice(from, tokens.length - from)
     return result
@@ -447,14 +466,15 @@ export default class Parser {
       token = tokens[i]
       type = token[0]
 
-      if (type === '(') {
+      if (type === TOKEN_TYPES_ENUM['(']) {
         brackets += 1
-      } else if (type === ')') {
+      } else if (type === TOKEN_TYPES_ENUM[')']) {
         brackets -= 1
-      } else if (brackets === 0 && type === ':') {
+      } else if (brackets === 0 && type === TOKEN_TYPES_ENUM[':']) {
         if (!prev) {
           this.doubleColon(token)
-        } else if (prev[0] === 'word' && prev[1] === 'progid') {
+        } else if (prev[0] === TOKEN_TYPES_ENUM.word &&
+          this.getTokenContent(prev) === 'progid') {
           continue
         } else {
           return i
@@ -469,15 +489,15 @@ export default class Parser {
   // Errors
 
   unclosedBracket (bracket) {
-    throw this.input.error('Unclosed bracket', bracket[2], bracket[3])
+    throw this.input.error('Unclosed bracket', bracket[3], bracket[4])
   }
 
   unknownWord (tokens) {
-    throw this.input.error('Unknown word', tokens[0][2], tokens[0][3])
+    throw this.input.error('Unknown word', tokens[0][3], tokens[0][4])
   }
 
   unexpectedClose (token) {
-    throw this.input.error('Unexpected }', token[2], token[3])
+    throw this.input.error('Unexpected }', token[3], token[4])
   }
 
   unclosedBlock () {
@@ -486,11 +506,11 @@ export default class Parser {
   }
 
   doubleColon (token) {
-    throw this.input.error('Double colon', token[2], token[3])
+    throw this.input.error('Double colon', token[3], token[4])
   }
 
   unnamedAtrule (node, token) {
-    throw this.input.error('At-rule without name', token[2], token[3])
+    throw this.input.error('At-rule without name', token[3], token[4])
   }
 
   precheckMissedSemicolon (/* tokens */) {
@@ -505,11 +525,11 @@ export default class Parser {
     let token
     for (let j = colon - 1; j >= 0; j--) {
       token = tokens[j]
-      if (token[0] !== 'space') {
+      if (token[0] !== TOKEN_TYPES_ENUM.space) {
         founded += 1
         if (founded === 2) break
       }
     }
-    throw this.input.error('Missed semicolon', token[2], token[3])
+    throw this.input.error('Missed semicolon', token[3], token[4])
   }
 }
