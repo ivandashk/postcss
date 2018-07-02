@@ -18,7 +18,7 @@ const ASTERISK = '*'.charCodeAt(0)
 const COLON = ':'.charCodeAt(0)
 const AT = '@'.charCodeAt(0)
 
-const TOKEN_LENGTH = 5
+const TOKEN_LENGTH = 7
 const EMPTY = 0
 const TOKEN_CODES = {
   'space': 0,
@@ -107,6 +107,7 @@ export default function tokenizer (input, options = {}) {
         )
 
         setCurrentToken([TOKEN_CODES.space,
+          pos, next,
           EMPTY, EMPTY,
           EMPTY, EMPTY
         ])
@@ -115,6 +116,7 @@ export default function tokenizer (input, options = {}) {
 
       case OPEN_SQUARE:
         setCurrentToken([TOKEN_CODES['['],
+          pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
         ])
@@ -122,6 +124,7 @@ export default function tokenizer (input, options = {}) {
 
       case CLOSE_SQUARE:
         setCurrentToken([TOKEN_CODES[']'],
+          pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
         ])
@@ -129,6 +132,7 @@ export default function tokenizer (input, options = {}) {
 
       case OPEN_CURLY:
         setCurrentToken([TOKEN_CODES['{'],
+          pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
         ])
@@ -136,6 +140,7 @@ export default function tokenizer (input, options = {}) {
 
       case CLOSE_CURLY:
         setCurrentToken([TOKEN_CODES['}'],
+          pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
         ])
@@ -143,6 +148,7 @@ export default function tokenizer (input, options = {}) {
 
       case COLON:
         setCurrentToken([TOKEN_CODES[':'],
+          pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
         ])
@@ -150,6 +156,7 @@ export default function tokenizer (input, options = {}) {
 
       case SEMICOLON:
         setCurrentToken([TOKEN_CODES[';'],
+          pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
         ])
@@ -183,6 +190,7 @@ export default function tokenizer (input, options = {}) {
             }
           } while (escaped)
           setCurrentToken([TOKEN_CODES.brackets,
+            pos, next + 1,
             line, pos - offset,
             line, next - offset
           ])
@@ -194,11 +202,13 @@ export default function tokenizer (input, options = {}) {
 
           if (next === -1 || RE_BAD_BRACKET.test(content)) {
             setCurrentToken([TOKEN_CODES['('],
+              pos, pos + 1,
               line, pos - offset,
               EMPTY, EMPTY
             ])
           } else {
             setCurrentToken([TOKEN_CODES.brackets,
+              pos, next + 1,
               line, pos - offset,
               line, next - offset
             ])
@@ -210,6 +220,7 @@ export default function tokenizer (input, options = {}) {
 
       case CLOSE_PARENTHESES:
         setCurrentToken([TOKEN_CODES[')'],
+          pos, pos + 1,
           line, pos - offset,
           EMPTY, EMPTY
         ])
@@ -250,6 +261,7 @@ export default function tokenizer (input, options = {}) {
         }
 
         setCurrentToken([TOKEN_CODES.string,
+          pos, ignore ? next : next + 1,
           line, pos - offset,
           nextLine, next - nextOffset
         ])
@@ -269,6 +281,7 @@ export default function tokenizer (input, options = {}) {
         }
 
         setCurrentToken([TOKEN_CODES['at-word'],
+          pos, next + 1,
           line, pos - offset,
           line, next - offset
         ])
@@ -305,6 +318,7 @@ export default function tokenizer (input, options = {}) {
         }
 
         setCurrentToken([TOKEN_CODES.word,
+          pos, next + 1,
           line, pos - offset,
           line, next - offset
         ])
@@ -336,6 +350,7 @@ export default function tokenizer (input, options = {}) {
           }
 
           setCurrentToken([TOKEN_CODES.comment,
+            pos, ignore ? next : next + 1,
             line, pos - offset,
             nextLine, next - nextOffset
           ])
@@ -353,6 +368,7 @@ export default function tokenizer (input, options = {}) {
           }
 
           setCurrentToken([TOKEN_CODES.word,
+            pos, next + 1,
             line, pos - offset,
             line, next - offset
           ])
